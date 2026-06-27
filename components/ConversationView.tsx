@@ -6,6 +6,28 @@ import AudioVisualizer from './AudioVisualizer'
 
 const WS_URL = 'wss://api.openai.com/v1/realtime'
 
+const TOOLS = [
+  {
+    type: 'function',
+    name: 'get_next_word',
+    description: 'Get the next vocabulary word due for spaced repetition review. Call this when you want to introduce a new practice word.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    type: 'function',
+    name: 'get_word_definition',
+    description: 'Look up the definition of a specific word in the vocabulary database.',
+    parameters: {
+      type: 'object',
+      properties: {
+        word: { type: 'string', description: 'The word to look up' },
+        language: { type: 'string', enum: ['en', 'ja'], description: 'Language of the word' },
+      },
+      required: ['word'],
+    },
+  },
+]
+
 function toBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let binary = ''
@@ -13,10 +35,7 @@ function toBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-function pcm16Base64ToAudioBuffer(
-  ctx: AudioContext,
-  b64: string,
-): AudioBuffer {
+function pcm16Base64ToAudioBuffer(ctx: AudioContext, b64: string): AudioBuffer {
   const binary = atob(b64)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
@@ -47,21 +66,100 @@ export default function ConversationView({ persona }: Props) {
   const isAIPlayingRef = useRef(false)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
 
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([])
+  const playbackStartRef = useRef<number | null>(null)
+  const currentItemIdRef = useRef<string | null>(null)
+  const enqueuedMsRef = useRef(0)
+  const interruptedRef = useRef(false)
+
+  // Session tracking
+  const sessionIdRef = useRef<number | null>(null)
+
+  // Transcript flush buffer — only complete entries (user utterance + AI response.done)
+  const flushBufferRef = useRef<TranscriptEntry[]>([])
+  const flushedCountRef = useRef(0)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Accumulate AI delta text until response.done
+  const currentAIEntryRef = useRef<TranscriptEntry | null>(null)
+
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [transcript])
 
+  const flushTranscript = useCallback(async () => {
+    const sessionId = sessionIdRef.current
+    if (!sessionId) return
+    const buf = flushBufferRef.current
+    const flushed = flushedCountRef.current
+    const pending = buf.slice(flushed)
+    if (pending.length === 0) return
+
+    const items = pending.map((entry, i) => ({
+      role: entry.role,
+      text: entry.text,
+      seq: flushed + i,
+    }))
+
+    try {
+      await fetch('/api/transcript/append', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, items }),
+      })
+      flushedCountRef.current += pending.length
+    } catch (e) {
+      console.error('[transcript] flush failed', e)
+    }
+  }, [])
+
+  const scheduleFlush = useCallback(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(flushTranscript, 10_000)
+  }, [flushTranscript])
+
+  // Add a complete entry to both display state and flush buffer
+  const addCompleteEntry = useCallback((entry: TranscriptEntry) => {
+    flushBufferRef.current = [...flushBufferRef.current, entry]
+    setTranscript((prev) => [...prev, entry])
+    scheduleFlush()
+  }, [scheduleFlush])
+
   const stopAIAudio = useCallback(() => {
+    const ctx = audioCtxRef.current
+    for (const s of activeSourcesRef.current) {
+      try { s.onended = null; s.stop() } catch {}
+      try { s.disconnect() } catch {}
+    }
+    activeSourcesRef.current = []
+
+    if (ctx && currentItemIdRef.current && playbackStartRef.current !== null
+        && wsRef.current?.readyState === WebSocket.OPEN) {
+      const elapsedMs = (ctx.currentTime - playbackStartRef.current) * 1000
+      const playedMs = Math.max(0, Math.floor(Math.min(elapsedMs, enqueuedMsRef.current)))
+      wsRef.current.send(JSON.stringify({
+        type: 'conversation.item.truncate',
+        item_id: currentItemIdRef.current,
+        content_index: 0,
+        audio_end_ms: playedMs,
+      }))
+    }
+
+    interruptedRef.current = true
+    nextPlayTimeRef.current = ctx?.currentTime ?? 0
+    playbackStartRef.current = null
+    currentItemIdRef.current = null
     isAIPlayingRef.current = false
-    nextPlayTimeRef.current = audioCtxRef.current?.currentTime ?? 0
     setSpeakingState((s) => (s === 'ai' ? 'idle' : s))
     setVolume(0)
   }, [])
 
-  const enqueueAIAudio = useCallback((b64: string) => {
+  const enqueueAIAudio = useCallback((msg: { delta: string; item_id?: string }) => {
     const ctx = audioCtxRef.current
-    if (!ctx) return
-    const buffer = pcm16Base64ToAudioBuffer(ctx, b64)
+    if (!ctx || interruptedRef.current) return
+
+    if (msg.item_id) currentItemIdRef.current = msg.item_id
+
+    const buffer = pcm16Base64ToAudioBuffer(ctx, msg.delta)
     const source = ctx.createBufferSource()
     source.buffer = buffer
 
@@ -72,8 +170,23 @@ export default function ConversationView({ persona }: Props) {
 
     const now = ctx.currentTime
     const start = Math.max(now, nextPlayTimeRef.current)
+
+    if (playbackStartRef.current === null) {
+      playbackStartRef.current = start
+      enqueuedMsRef.current = 0
+    }
+
     source.start(start)
     nextPlayTimeRef.current = start + buffer.duration
+    enqueuedMsRef.current += buffer.duration * 1000
+
+    activeSourcesRef.current.push(source)
+    source.onended = () => {
+      activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== source)
+      source.disconnect()
+      analyser.disconnect()
+    }
+
     isAIPlayingRef.current = true
     setSpeakingState('ai')
 
@@ -86,6 +199,40 @@ export default function ConversationView({ persona }: Props) {
       requestAnimationFrame(tick)
     }
     tick()
+  }, [])
+
+  const handleToolCall = useCallback(async (item: { name: string; arguments: string; call_id: string }) => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+
+    let args: Record<string, unknown> = {}
+    try { args = JSON.parse(item.arguments || '{}') } catch {}
+
+    let result: unknown = null
+    try {
+      const res = await fetch('/api/tools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool: item.name, args }),
+      })
+      const data = await res.json()
+      result = data.result
+    } catch (e) {
+      console.error('[tool] call failed', e)
+    }
+
+    // Send tool result back to OpenAI
+    ws.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: item.call_id,
+        output: JSON.stringify(result),
+      },
+    }))
+
+    // Prompt model to continue
+    ws.send(JSON.stringify({ type: 'response.create' }))
   }, [])
 
   const handleMessage = useCallback(
@@ -103,34 +250,50 @@ export default function ConversationView({ persona }: Props) {
           setVolume(0)
           break
 
-        // GA event names
+        case 'response.created':
+          interruptedRef.current = false
+          playbackStartRef.current = null
+          break
+
         case 'response.output_audio.delta':
-          enqueueAIAudio(msg.delta)
+          enqueueAIAudio(msg)
           break
 
         case 'response.output_audio_transcript.delta':
+          // Accumulate AI text in ref + update display state only
           setTranscript((prev) => {
             const last = prev[prev.length - 1]
             if (last?.role === 'assistant') {
-              return [
-                ...prev.slice(0, -1),
-                { ...last, text: last.text + msg.delta },
-              ]
+              const updated = { ...last, text: last.text + msg.delta }
+              currentAIEntryRef.current = updated
+              return [...prev.slice(0, -1), updated]
             }
-            return [
-              ...prev,
-              { id: crypto.randomUUID(), role: 'assistant', text: msg.delta, timestamp: Date.now() },
-            ]
+            const entry: TranscriptEntry = {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              text: msg.delta,
+              timestamp: Date.now(),
+            }
+            currentAIEntryRef.current = entry
+            return [...prev, entry]
           })
           break
 
         case 'input_audio.transcription.completed':
         case 'conversation.item.input_audio_transcription.completed':
           if (msg.transcript?.trim()) {
-            setTranscript((prev) => [
-              ...prev,
-              { id: crypto.randomUUID(), role: 'user', text: msg.transcript, timestamp: Date.now() },
-            ])
+            addCompleteEntry({
+              id: crypto.randomUUID(),
+              role: 'user',
+              text: msg.transcript,
+              timestamp: Date.now(),
+            })
+          }
+          break
+
+        case 'response.output_item.done':
+          if (msg.item?.type === 'function_call') {
+            handleToolCall(msg.item)
           }
           break
 
@@ -140,6 +303,14 @@ export default function ConversationView({ persona }: Props) {
 
         case 'response.done':
           isAIPlayingRef.current = false
+          playbackStartRef.current = null
+          currentItemIdRef.current = null
+          // Commit completed AI entry to flush buffer
+          if (currentAIEntryRef.current) {
+            flushBufferRef.current = [...flushBufferRef.current, currentAIEntryRef.current]
+            currentAIEntryRef.current = null
+            scheduleFlush()
+          }
           setTimeout(() => {
             setSpeakingState((s) => (s === 'ai' ? 'idle' : s))
             setVolume(0)
@@ -147,16 +318,20 @@ export default function ConversationView({ persona }: Props) {
           break
 
         case 'error':
-          console.error('Realtime error full msg:', JSON.stringify(msg))
+          console.error('Realtime error:', JSON.stringify(msg))
           break
       }
     },
-    [enqueueAIAudio, stopAIAudio],
+    [enqueueAIAudio, stopAIAudio, addCompleteEntry, scheduleFlush, handleToolCall],
   )
 
   const connect = useCallback(async () => {
     setStatus('connecting')
     setTranscript([])
+    flushBufferRef.current = []
+    flushedCountRef.current = 0
+    currentAIEntryRef.current = null
+    sessionIdRef.current = null
 
     try {
       const res = await fetch('/api/session', {
@@ -165,9 +340,10 @@ export default function ConversationView({ persona }: Props) {
         body: JSON.stringify({ persona }),
       })
       if (!res.ok) throw new Error('Session creation failed')
-      const { clientSecret, model, instructions, voice } = await res.json()
+      const { clientSecret, model, instructions, voice, sessionId } = await res.json()
 
-      // AudioContext at 24kHz (OpenAI Realtime native rate)
+      sessionIdRef.current = sessionId ?? null
+
       const ctx = new AudioContext({ sampleRate: 24000 })
       audioCtxRef.current = ctx
       await ctx.audioWorklet.addModule('/audio-processor.js')
@@ -179,7 +355,6 @@ export default function ConversationView({ persona }: Props) {
       const worklet = new AudioWorkletNode(ctx, 'audio-processor')
       micSource.connect(worklet)
 
-      // Connect to OpenAI Realtime via WebSocket subprotocol auth
       const ws = new WebSocket(`${WS_URL}?model=${model}`, [
         'realtime',
         `openai-insecure-api-key.${clientSecret}`,
@@ -187,13 +362,14 @@ export default function ConversationView({ persona }: Props) {
       wsRef.current = ws
 
       ws.onopen = () => {
-        // Configure session after connecting
         ws.send(JSON.stringify({
           type: 'session.update',
           session: {
             type: 'realtime',
             output_modalities: ['audio'],
             instructions,
+            tools: TOOLS,
+            tool_choice: 'auto',
             audio: {
               input: {
                 format: { type: 'audio/pcm', rate: 24000 },
@@ -211,16 +387,13 @@ export default function ConversationView({ persona }: Props) {
       }
 
       ws.onmessage = (e) => handleMessage(e.data)
-
       ws.onerror = () => setStatus('error')
-
       ws.onclose = () => {
         setStatus('idle')
         setSpeakingState('idle')
         setVolume(0)
       }
 
-      // Stream PCM16 mic audio to OpenAI
       worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
         if (ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify({
@@ -234,7 +407,23 @@ export default function ConversationView({ persona }: Props) {
     }
   }, [persona, handleMessage])
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
+    // Flush remaining transcript
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    await flushTranscript()
+
+    // Signal session end
+    if (sessionIdRef.current) {
+      fetch('/api/session/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionIdRef.current }),
+      }).catch(console.error)
+    }
+
     wsRef.current?.close()
     streamRef.current?.getTracks().forEach((t) => t.stop())
     audioCtxRef.current?.close()
@@ -242,12 +431,13 @@ export default function ConversationView({ persona }: Props) {
     streamRef.current = null
     audioCtxRef.current = null
     isAIPlayingRef.current = false
+    sessionIdRef.current = null
     setStatus('idle')
     setSpeakingState('idle')
     setVolume(0)
-  }, [])
+  }, [flushTranscript])
 
-  useEffect(() => () => disconnect(), [disconnect])
+  useEffect(() => () => { disconnect() }, [disconnect])
 
   const statusLabel: Record<SessionStatus, string> = {
     idle: '尚未開始',

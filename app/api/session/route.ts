@@ -1,12 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildSystemPrompt } from '@/lib/prompt'
 import { Persona } from '@/lib/types'
+import { db } from '@/lib/db'
+import { words, word_progress, sessions } from '@/lib/schema'
+import { lte, asc, eq, sql, and } from 'drizzle-orm'
+
+function querySRSWords(language: string, limit = 8) {
+  return db
+    .select({
+      word: words.word,
+      reading: words.reading,
+      definition: words.definition,
+      example: words.example,
+    })
+    .from(word_progress)
+    .innerJoin(words, eq(words.id, word_progress.word_id))
+    .where(and(lte(word_progress.next_review, sql`unixepoch()`), eq(words.language, language)))
+    .orderBy(asc(word_progress.next_review), asc(word_progress.ease_factor))
+    .limit(limit)
+    .all()
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const persona: Persona = body.persona
-    const todayWords: string[] = body.todayWords ?? []
+
+    // Query SRS words due for review
+    const srsWords = querySRSWords(persona.language)
+    const todayWords = srsWords.map((w) =>
+      w.reading ? `${w.word}（${w.reading}）: ${w.definition}` : `${w.word}: ${w.definition}`
+    )
+
     const instructions = buildSystemPrompt(persona, todayWords)
     const model = process.env.OPENAI_REALTIME_MODEL ?? 'gpt-realtime-mini'
 
@@ -16,7 +41,6 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      // client_secrets only accepts minimal config; rest goes via session.update after WS connect
       body: JSON.stringify({
         session: { type: 'realtime', model },
       }),
@@ -29,11 +53,25 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json()
-    // Response has top-level "value" (ek_... token) and "expires_at"
     const clientSecret = data.value ?? data.client_secret?.value
     const expiresAt = data.expires_at ?? data.client_secret?.expires_at
 
-    return NextResponse.json({ clientSecret, expiresAt, model, instructions, voice: persona.voice })
+    // Create session record
+    const now = Math.floor(Date.now() / 1000)
+    const inserted = db
+      .insert(sessions)
+      .values({ language: persona.language, persona: persona.id, started_at: now })
+      .returning({ id: sessions.id })
+      .get()
+
+    return NextResponse.json({
+      clientSecret,
+      expiresAt,
+      model,
+      instructions,
+      voice: persona.voice,
+      sessionId: inserted.id,
+    })
   } catch (err) {
     console.error('[session] error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
