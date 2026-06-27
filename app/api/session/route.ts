@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildSystemPrompt } from '@/lib/prompt'
+import { searchMemories } from '@/lib/lance'
 import { Persona } from '@/lib/types'
 import { db } from '@/lib/db'
 import { words, word_progress, sessions } from '@/lib/schema'
@@ -32,7 +33,20 @@ export async function POST(req: NextRequest) {
       w.reading ? `${w.word}（${w.reading}）: ${w.definition}` : `${w.word}: ${w.definition}`
     )
 
-    const instructions = buildSystemPrompt(persona, todayWords)
+    let memories: string[] = []
+    try {
+      const recs = await searchMemories(
+        persona.language + ' ' + todayWords.join(' '),
+        persona.language,
+        3
+      )
+      memories = recs.map((r) => {
+        const date = new Date(r.created_at * 1000).toISOString().slice(0, 10)
+        return `${date}：${r.summary}`
+      })
+    } catch { /* LanceDB not yet initialized — skip */ }
+
+    const instructions = buildSystemPrompt(persona, todayWords, memories)
     const model = process.env.OPENAI_REALTIME_MODEL ?? 'gpt-realtime-mini'
 
     const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {

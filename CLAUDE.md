@@ -52,5 +52,5 @@ OPENAI_REALTIME_MODEL=gpt-realtime-mini
 |-------|------|------|
 | Phase 1 全雙工對話 | ✅ | `docs/specs/001-realtime-core/` |
 | Phase 2 單字庫 + SM-2 | ✅ | `docs/specs/002-vocab-srs/` |
-| Phase 3 Qwen async + LanceDB | ⬜ | `docs/specs/003-async-pipeline/tasks.md` |
+| Phase 3 Qwen async + LanceDB | ✅ | `docs/specs/003-async-pipeline/tasks.md` |
 | Phase 4 Dashboard | ⬜ | `docs/specs/004-dashboard/` |

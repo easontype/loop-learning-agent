@@ -20,7 +20,7 @@ const LANG_MAP: Record<string, string> = {
   ja: 'Japanese',
 }
 
-export function buildSystemPrompt(persona: Persona, todayWords: string[] = []): string {
+export function buildSystemPrompt(persona: Persona, todayWords: string[] = [], memories: string[] = []): string {
   const lang = LANG_MAP[persona.language]
 
   let prompt = `You are ${persona.name}, a ${lang} conversation partner for language learners.
@@ -32,6 +32,10 @@ ${CORRECTION_MAP[persona.correctionStyle]}`
 
   if (todayWords.length > 0) {
     prompt += `\n\nToday's practice vocabulary — try to use or ask about these words naturally during conversation:\n${todayWords.join(', ')}`
+  }
+
+  if (memories.length > 0) {
+    prompt += '\n\n[Past learning memories]\n' + memories.map((m) => `- ${m}`).join('\n')
   }
 
   return prompt
