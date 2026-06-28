@@ -62,5 +62,5 @@ export async function searchMemories(
     .search(Array.from(out.data))
     .where(`language = '${language}'`)
     .limit(limit)
-    .execute()
+    .toArray()
 }

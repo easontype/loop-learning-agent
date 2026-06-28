@@ -30,8 +30,9 @@
 - [x] 格式化記憶 → 注入 system prompt 動態後綴
 - [x] 確保固定前綴 / 動態後綴順序不變（Prompt Cache）
 
-## 驗證（待實際跑）
+## 驗證（合成測試 2026-06-28）
 
-- [ ] 跑一次完整 session → 結束 → 30 秒內 jobs.status = 'done'
-- [ ] 查 SQLite：`SELECT * FROM word_progress WHERE updated_at > unixepoch()-300`
-- [ ] 開第二次 session → DevTools 看 POST /api/session response → system prompt 含記憶
+- [x] Ollama JSON 解析：worker prompt → json 輸出 → validateQwenOutput 過濾
+- [x] SM-2 transaction：word_progress 更新、session_words 寫入、jobs.status = 'done'
+- [x] LanceDB：insertMemory（bge-small embedding）+ searchMemories（toArray）
+- [ ] 真實 session 端對端（需先 `ollama pull qwen2.5:14b-instruct-q3_K_M`）
