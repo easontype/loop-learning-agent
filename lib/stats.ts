@@ -61,6 +61,46 @@ export function getWordProgress(opts: { language: string; limit?: number }) {
     .map((row) => ({ ...row, isLeech: (row.lapses ?? 0) >= LEECH_LAPSES }))
 }
 
+export function getWeeklyTrend(weeks = 8) {
+  const now = Math.floor(Date.now() / 1000)
+
+  const progressRows = db
+    .select({ updated_at: word_progress.updated_at, ease_factor: word_progress.ease_factor, repetitions: word_progress.repetitions })
+    .from(word_progress)
+    .all()
+
+  const wordRows = db.select({ created_at: words.created_at }).from(words).all()
+
+  const buckets = Array.from({ length: weeks }, (_, i) => {
+    const weekStart = now - (weeks - i) * WEEK_S
+    return { weekStart, weekEnd: weekStart + WEEK_S, easeSum: 0, easeCount: 0, newWords: 0, masteredCount: 0 }
+  })
+
+  const bucketFor = (t: number) => buckets.find((b) => t >= b.weekStart && t < b.weekEnd)
+
+  for (const row of progressRows) {
+    if (!row.updated_at) continue
+    const bucket = bucketFor(row.updated_at)
+    if (!bucket) continue
+    bucket.easeSum += row.ease_factor ?? 2.5
+    bucket.easeCount += 1
+    if ((row.repetitions ?? 0) >= MASTERED_REPETITIONS) bucket.masteredCount += 1
+  }
+
+  for (const row of wordRows) {
+    if (!row.created_at) continue
+    const bucket = bucketFor(row.created_at)
+    if (bucket) bucket.newWords += 1
+  }
+
+  return buckets.map((b) => ({
+    weekStart: b.weekStart,
+    avgEaseFactor: b.easeCount > 0 ? b.easeSum / b.easeCount : null,
+    newWords: b.newWords,
+    masteredCount: b.masteredCount,
+  }))
+}
+
 export function getMistakes(opts: { limit?: number } = {}) {
   const { limit = 20 } = opts
 

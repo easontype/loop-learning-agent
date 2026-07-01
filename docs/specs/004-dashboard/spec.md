@@ -27,7 +27,7 @@
 - 從 `mistakes` 表讀取最近 20 條
 - 欄位：日期、類型（grammar / pronunciation / vocabulary）、context、correction
 
-### 學習曲線（Phase 4 後期）
+### 學習曲線（Phase 4 後期）✅ 完成（2026-07-01）
 - 每週平均 ease_factor 變化
 - 詞彙新增 / 熟練數量趨勢
 
@@ -38,6 +38,7 @@
 ```
 GET /api/words?language=en&sort=next_review&limit=50
 GET /api/stats/summary
+GET /api/stats/trend
 GET /api/mistakes?limit=20
 ```
 

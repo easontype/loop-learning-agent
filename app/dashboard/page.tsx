@@ -1,4 +1,4 @@
-import { getSummaryStats, getWordProgress, getMistakes } from '@/lib/stats'
+import { getSummaryStats, getWordProgress, getMistakes, getWeeklyTrend } from '@/lib/stats'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +19,81 @@ const MISTAKE_TYPE_LABEL: Record<string, string> = {
   grammar: '文法',
   pronunciation: '發音',
   vocabulary: '詞彙',
+}
+
+function formatWeekLabel(unixSeconds: number): string {
+  const d = new Date(unixSeconds * 1000)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+function EaseFactorChart({ rows }: { rows: ReturnType<typeof getWeeklyTrend> }) {
+  const width = 320
+  const height = 96
+  const padX = 8
+  const padY = 12
+  const values = rows.map((r) => r.avgEaseFactor)
+  const known = values.filter((v): v is number => v !== null)
+
+  if (known.length < 2) {
+    return <p className="text-[13px] text-[var(--loop-ink-mute)] px-1">資料不足，尚無法繪製趨勢</p>
+  }
+
+  const min = Math.min(...known)
+  const max = Math.max(...known)
+  const range = max - min || 1
+  const stepX = (width - padX * 2) / (rows.length - 1)
+
+  const points = rows
+    .map((r, i) => {
+      if (r.avgEaseFactor === null) return null
+      const x = padX + i * stepX
+      const y = padY + (1 - (r.avgEaseFactor - min) / range) * (height - padY * 2)
+      return `${x},${y}`
+    })
+    .filter((p): p is string => p !== null)
+    .join(' ')
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24">
+      <polyline points={points} fill="none" stroke="var(--loop-primary)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      {rows.map((r, i) => {
+        if (r.avgEaseFactor === null) return null
+        const x = padX + i * stepX
+        const y = padY + (1 - (r.avgEaseFactor - min) / range) * (height - padY * 2)
+        return <circle key={i} cx={x} cy={y} r={2.5} fill="var(--loop-primary)" />
+      })}
+    </svg>
+  )
+}
+
+function VocabGrowthChart({ rows }: { rows: ReturnType<typeof getWeeklyTrend> }) {
+  const width = 320
+  const height = 96
+  const padX = 8
+  const barGap = 4
+  const barWidth = (width - padX * 2) / rows.length - barGap
+  const maxNew = Math.max(...rows.map((r) => r.newWords), 1)
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24">
+      {rows.map((r, i) => {
+        const barHeight = (r.newWords / maxNew) * (height - 16)
+        const x = padX + i * (barWidth + barGap)
+        const y = height - barHeight
+        return (
+          <rect
+            key={i}
+            x={x}
+            y={y}
+            width={barWidth}
+            height={Math.max(barHeight, r.newWords > 0 ? 2 : 0)}
+            fill="var(--loop-primary-subdued)"
+            rx={1}
+          />
+        )
+      })}
+    </svg>
+  )
 }
 
 function OverviewCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -82,6 +157,7 @@ export default async function DashboardPage() {
   const enWords = getWordProgress({ language: 'en' })
   const jaWords = getWordProgress({ language: 'ja' })
   const mistakes = getMistakes({ limit: 20 })
+  const trend = getWeeklyTrend()
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-10">
@@ -102,6 +178,28 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <WordProgressTable language="en" rows={enWords} />
           <WordProgressTable language="ja" rows={jaWords} />
+        </div>
+      </section>
+
+      <section className="mb-10">
+        <h2 className="text-[19px] font-light tracking-[-0.19px] text-[var(--loop-ink)] mb-4">學習曲線</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-[var(--loop-canvas)] border border-[var(--loop-hairline)] rounded-[6px] p-6">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--loop-ink-mute)] mb-3">每週平均 Ease Factor</p>
+            <EaseFactorChart rows={trend} />
+            <div className="flex justify-between text-[10px] text-[var(--loop-ink-mute)] mt-1">
+              <span>{formatWeekLabel(trend[0].weekStart)}</span>
+              <span>{formatWeekLabel(trend[trend.length - 1].weekStart)}</span>
+            </div>
+          </div>
+          <div className="bg-[var(--loop-canvas)] border border-[var(--loop-hairline)] rounded-[6px] p-6">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--loop-ink-mute)] mb-3">每週新增詞彙</p>
+            <VocabGrowthChart rows={trend} />
+            <div className="flex justify-between text-[10px] text-[var(--loop-ink-mute)] mt-1">
+              <span>{formatWeekLabel(trend[0].weekStart)}</span>
+              <span>{formatWeekLabel(trend[trend.length - 1].weekStart)}</span>
+            </div>
+          </div>
         </div>
       </section>
 

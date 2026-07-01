@@ -18,10 +18,10 @@
 - [x] `lib/stats.ts` — 統計查詢層（getSummaryStats / getWordProgress / getMistakes），供 API route 與 page.tsx 共用
 - [x] 錯誤清單區塊
 
-## 進階（後期，未做）
+## 進階（後期）
 
 - [x] Leech 偵測（lapses >= 4，自動標示 + ruby 色底提示）— 已隨主頁面一併完成，非後期項目
-- [ ] 學習曲線圖表（每週 ease_factor 平均）
+- [x] 學習曲線圖表（每週 ease_factor 平均 + 每週新增詞彙）— `getWeeklyTrend()` 依 `word_progress.updated_at` / `words.created_at` 分週統計，`GET /api/stats/trend`，頁面用手刻 SVG（折線圖 + 長條圖，無新增依賴）呈現，8 週視窗。目前資料因所有單字都尚未被實際複習（ease_factor 全為預設 2.50、建立時間集中同一週），Ease Factor 折線圖顯示「資料不足」，屬資料現況非 bug；新增詞彙長條圖正常顯示。
 - [ ] JMdict 完整日文詞典匯入
 
 ## 設計系統踩雷紀錄
