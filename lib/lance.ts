@@ -47,6 +47,7 @@ export async function insertMemory(r: {
   const vector = Array.from(out.data)
   const daysSince = (Date.now() / 1000 - r.created_at) / 86400
   const table = await getTable()
+  await table.delete(`session_id = ${r.session_id}`)
   await table.add([{ ...r, vector, recency_weight: Math.exp(-daysSince / 90) }])
 }
 

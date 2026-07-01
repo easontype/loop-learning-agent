@@ -45,8 +45,8 @@ Lingua A8 是以 GPT-Realtime-2 為核心的全雙工語音對話語言教學系
 | 音訊 | Web Audio API + AudioWorklet | 瀏覽器原生，低延遲 |
 | AI 核心 | OpenAI GPT-Realtime-2 mini | 全雙工，barge-in，成本低 |
 | 向量庫 | LanceDB（embedded） | 無需 server，TS + Python 共用 |
-| 本地模型 | Qwen2.5-14B Q3_K_M via Ollama | async 後處理，RTX 4060，零 API 成本 |
-| Embedding | fastembed bge-small（CPU） | 不搶 Qwen VRAM（ADR-04） |
+| 分析模型 | Gemini 3.1 Flash-Lite（雲端 API） | async 後處理，低延遲低成本，不佔本地資源 |
+| Embedding | fastembed bge-small（CPU） | 免額外 server，跨機器一致（ADR-04） |
 | 資料庫 | SQLite + WAL（better-sqlite3） | 自用期輕量 |
 | ORM | Drizzle ORM | 輕量，型別安全 |
 | 套件管理 | pnpm | 快，磁碟效率好 |
@@ -62,7 +62,7 @@ Lingua A8 是以 GPT-Realtime-2 為核心的全雙工語音對話語言教學系
 | 每分鐘合計 | 約 $0.03 |
 | 每天 30 分鐘 | 約 $0.9 |
 | 每月 | 約 $27 |
-| Qwen 後處理 | $0（本地） |
+| Gemini 3.1 Flash-Lite 後處理 | 約 $0.03 / 月（30 分鐘/天，token 量極小） |
 
 ---
 

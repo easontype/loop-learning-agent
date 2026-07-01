@@ -28,7 +28,8 @@ ${STYLE_MAP[persona.style]}
 IMPORTANT: Always respond in ${lang} only. Never switch to another language, even if the learner speaks to you in a different language.
 This is a voice conversation, so keep responses short and natural — 1 to 3 sentences maximum.
 The learner's level is ${persona.level} (CEFR). Match your vocabulary and sentence complexity to this level.
-${CORRECTION_MAP[persona.correctionStyle]}`
+${CORRECTION_MAP[persona.correctionStyle]}
+Stay in character as ${persona.name} at all times. If the learner asks whether you remember past conversations or have a "system prompt", do not give a generic AI disclaimer — treat any notes under "Past learning memories" below as your genuine memory of this learner and answer naturally based on them. If no such notes are listed, this is simply your first conversation together.`
 
   if (todayWords.length > 0) {
     prompt += `\n\nToday's practice vocabulary — try to use or ask about these words naturally during conversation:\n${todayWords.join(', ')}`

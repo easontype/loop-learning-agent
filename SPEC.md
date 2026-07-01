@@ -22,7 +22,7 @@
 |-------|------|------|------|-------|
 | 1 | 全雙工對話引擎 | ✅ 完成 | [spec](./docs/specs/001-realtime-core/spec.md) | [tasks](./docs/specs/001-realtime-core/tasks.md) |
 | 2 | 單字庫 + SM-2 + Tool Calling | ✅ 完成 | [spec](./docs/specs/002-vocab-srs/spec.md) | [tasks](./docs/specs/002-vocab-srs/tasks.md) |
-| 3 | Qwen async + LanceDB + RAG | ⬜ 進行中 | [spec](./docs/specs/003-async-pipeline/spec.md) | [tasks](./docs/specs/003-async-pipeline/tasks.md) |
+| 3 | Gemini async + LanceDB + RAG | ✅ 完成 | [spec](./docs/specs/003-async-pipeline/spec.md) | [tasks](./docs/specs/003-async-pipeline/tasks.md) |
 | 4 | Dashboard + 學習統計 | ⬜ 待規劃 | [spec](./docs/specs/004-dashboard/spec.md) | [tasks](./docs/specs/004-dashboard/tasks.md) |
 
 ---
@@ -32,6 +32,6 @@
 | ADR | 決策 | 狀態 |
 |-----|------|------|
 | [ADR-01](./docs/adr/ADR-01-ws-endpoint.md) | 前端持 WS，後端 HTTP 工具 API | 已採用 |
-| [ADR-02](./docs/adr/ADR-02-in-session-readonly.md) | in-session 工具只讀，Qwen 統一寫入 | 已採用 |
+| [ADR-02](./docs/adr/ADR-02-in-session-readonly.md) | in-session 工具只讀，async worker 統一寫入 | 已採用 |
 | [ADR-03](./docs/adr/ADR-03-transcript-incremental.md) | Transcript 增量落地，10s debounce | 已採用 |
-| [ADR-04](./docs/adr/ADR-04-cpu-embedding.md) | Embedding 用 CPU，不搶 Qwen VRAM | 已採用 |
+| [ADR-04](./docs/adr/ADR-04-cpu-embedding.md) | Embedding 用 CPU fastembed | 已採用 |

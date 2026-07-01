@@ -238,6 +238,11 @@ export default function ConversationView({ persona }: Props) {
   const handleMessage = useCallback(
     (raw: string) => {
       const msg = JSON.parse(raw)
+      if (msg.type === 'session.updated' || msg.type === 'error' || msg.type.includes('transcription')) {
+        console.log('[ws debug]', msg.type, JSON.stringify(msg))
+      } else {
+        console.log('[ws debug] type:', msg.type)
+      }
       switch (msg.type) {
         case 'input_audio_buffer.speech_started':
           stopAIAudio()
@@ -253,31 +258,36 @@ export default function ConversationView({ persona }: Props) {
         case 'response.created':
           interruptedRef.current = false
           playbackStartRef.current = null
+          currentAIEntryRef.current = null
           break
 
         case 'response.output_audio.delta':
           enqueueAIAudio(msg)
           break
 
-        case 'response.output_audio_transcript.delta':
-          // Accumulate AI text in ref + update display state only
-          setTranscript((prev) => {
-            const last = prev[prev.length - 1]
-            if (last?.role === 'assistant') {
-              const updated = { ...last, text: last.text + msg.delta }
-              currentAIEntryRef.current = updated
-              return [...prev.slice(0, -1), updated]
-            }
+        case 'response.output_audio_transcript.delta': {
+          const delta = msg.delta as string
+          if (!currentAIEntryRef.current) {
             const entry: TranscriptEntry = {
               id: crypto.randomUUID(),
               role: 'assistant',
-              text: msg.delta,
+              text: delta,
               timestamp: Date.now(),
             }
             currentAIEntryRef.current = entry
-            return [...prev, entry]
-          })
+            setTranscript((prev) => [...prev, entry])
+          } else {
+            const updated = { ...currentAIEntryRef.current, text: currentAIEntryRef.current.text + delta }
+            currentAIEntryRef.current = updated
+            const id = updated.id
+            setTranscript((prev) => {
+              const idx = prev.findIndex((e) => e.id === id)
+              if (idx < 0) return prev
+              return [...prev.slice(0, idx), updated, ...prev.slice(idx + 1)]
+            })
+          }
           break
+        }
 
         case 'input_audio.transcription.completed':
         case 'conversation.item.input_audio_transcription.completed':
@@ -348,7 +358,10 @@ export default function ConversationView({ persona }: Props) {
       audioCtxRef.current = ctx
       await ctx.audioWorklet.addModule('/audio-processor.js')
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      })
       streamRef.current = stream
 
       const micSource = ctx.createMediaStreamSource(stream)
@@ -373,10 +386,11 @@ export default function ConversationView({ persona }: Props) {
             audio: {
               input: {
                 format: { type: 'audio/pcm', rate: 24000 },
-                turn_detection: { type: 'semantic_vad' },
+                turn_detection: { type: 'server_vad', silence_duration_ms: 700 },
+                transcription: { model: 'gpt-realtime-whisper' },
               },
               output: {
-                format: { type: 'audio/pcm' },
+                format: { type: 'audio/pcm', rate: 24000 },
                 voice,
               },
             },

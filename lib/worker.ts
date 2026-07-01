@@ -4,8 +4,8 @@ import { sm2, defaultSM2 } from './srs'
 import { insertMemory } from './lance'
 import { eq, and, asc, sql } from 'drizzle-orm'
 
-const OLLAMA_URL = 'http://localhost:11434/api/generate'
-const MODEL = 'qwen2.5:14b-instruct-q3_K_M'
+const GEMINI_MODEL = 'gemini-3.1-flash-lite'
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 export function startWorker() {
   setInterval(processPendingJobs, 30_000)
@@ -46,17 +46,22 @@ async function processJob(jobId: number, sessionId: number) {
 
     const transcriptText = items.map((i) => `${i.role}: ${i.text}`).join('\n')
 
-    const prompt = buildQwenPrompt(transcriptText)
-    const res = await fetch(OLLAMA_URL, {
+    const prompt = buildAnalysisPrompt(transcriptText)
+    const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, prompt, stream: false, format: 'json' }),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json' },
+      }),
     })
-    if (!res.ok) throw new Error(`Ollama ${res.status}: ${await res.text()}`)
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`)
 
-    const ollamaData = await res.json()
-    const parsed = JSON.parse(ollamaData.response)
-    const validated = validateQwenOutput(parsed, transcriptText)
+    const geminiData = await res.json()
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!rawText) throw new Error(`Gemini response missing text: ${JSON.stringify(geminiData)}`)
+    const parsed = JSON.parse(rawText)
+    const validated = validateAnalysisOutput(parsed, transcriptText)
 
     const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1).all()[0]
     const now = Math.floor(Date.now() / 1000)
@@ -136,7 +141,7 @@ async function processJob(jobId: number, sessionId: number) {
   }
 }
 
-function buildQwenPrompt(transcript: string): string {
+function buildAnalysisPrompt(transcript: string): string {
   return `You are a language learning analyzer. Given the conversation transcript below, extract vocabulary quality scores and grammar mistakes.
 
 Rules:
@@ -154,8 +159,8 @@ Respond ONLY with valid JSON:
 {"word_quality":{"word":3},"mistakes":[{"type":"grammar","context":"...","correction":"..."}],"session_summary":"..."}`
 }
 
-function validateQwenOutput(parsed: unknown, transcriptText: string): Record<string, unknown> {
-  if (!parsed || typeof parsed !== 'object') throw new Error('invalid JSON from Qwen')
+function validateAnalysisOutput(parsed: unknown, transcriptText: string): Record<string, unknown> {
+  if (!parsed || typeof parsed !== 'object') throw new Error('invalid JSON from Gemini')
   const out = parsed as Record<string, unknown>
 
   const wq = ((out.word_quality ?? {}) as Record<string, unknown>)

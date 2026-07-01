@@ -1,12 +1,12 @@
-# Spec 003 — Async Pipeline（Qwen + LanceDB + RAG）
+# Spec 003 — Async Pipeline（Gemini + LanceDB + RAG）
 
-> Phase 3 ⬜ 尚未開始
+> Phase 3 ✅ 完成（2026-07-01）
 
 ---
 
 ## 功能範圍
 
-Session 結束後，Qwen2.5-14B 從 transcript 推導學習品質，寫入 SM-2，並將 session_summary 向量化存入 LanceDB 供 RAG 使用。
+Session 結束後，Gemini 3.1 Flash-Lite 從 transcript 推導學習品質，寫入 SM-2，並將 session_summary 向量化存入 LanceDB 供 RAG 使用。
 
 ---
 
@@ -19,7 +19,7 @@ POST /api/session/end
 
 Worker loop（lib/worker.ts，單一 consumer，序列化）
   → 讀 transcript_items WHERE session_id = :id ORDER BY seq
-  → 組 prompt → Qwen2.5-14B（Ollama）
+  → 組 prompt → Gemini 3.1 Flash-Lite（REST API，responseMimeType: application/json）
   → 解析 JSON 輸出（含 schema 驗證）
   → transaction：
       SM-2 更新 word_progress（sm2()）
@@ -33,7 +33,7 @@ Worker loop（lib/worker.ts，單一 consumer，序列化）
 
 ---
 
-## Qwen 輸出格式
+## 分析輸出格式
 
 ```json
 {
@@ -54,7 +54,7 @@ Worker loop（lib/worker.ts，單一 consumer，序列化）
 
 ---
 
-## Qwen Prompt 設計
+## 分析 Prompt 設計
 
 ```
 You are a language learning analyzer. Given the conversation transcript below,
@@ -121,20 +121,20 @@ const memories = await lanceTable.search(queryVector)
 
 ---
 
-## Ollama 設定
+## Gemini API 設定
 
-```bash
-ollama pull qwen2.5:14b-instruct-q3_K_M
-# 約 6.5 GB VRAM，RTX 4060 8GB 可跑
+```
+GEMINI_API_KEY=...   # .env.local
 ```
 
-API：`http://localhost:11434/api/generate`（POST，stream=false）
+Model：`gemini-3.1-flash-lite`
+API：`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=$GEMINI_API_KEY`（POST，`generationConfig.responseMimeType: "application/json"`）
 
 ---
 
 ## 成功標準
 
-- [ ] Session 結束 30 秒內，jobs.status 變 'done'
-- [ ] word_progress 更新可在 DB 查到（next_review 改變）
+- [x] Session 結束 30 秒內，jobs.status 變 'done'
+- [x] word_progress 更新可在 DB 查到（next_review 改變）
 - [ ] 第二次 session 的 system prompt 包含上次 summary
 - [ ] Dashboard 可看到學習統計（見 spec 004）

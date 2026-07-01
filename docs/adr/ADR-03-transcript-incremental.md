@@ -19,7 +19,7 @@
 ## 理由
 
 - 前端累積一次 POST：瀏覽器崩潰或關 tab，整個 session transcript 全丟
-- 增量寫入最多丟 10 秒，可接受（Qwen 重試時 transcript 基本完整）
+- 增量寫入最多丟 10 秒，可接受（worker 重試時 transcript 基本完整）
 - `UNIQUE(session_id, seq)` + `onConflictDoNothing()` 保冪等，重送安全
 
 ## 代價

@@ -1,15 +1,15 @@
 # Tasks 003 — Async Pipeline（Phase 3）
 
-> 狀態：✅ 實作完成 | 完成日：2026-06-28
+> 狀態：✅ 實作完成 | 完成日：2026-07-01（真實 session 端對端驗證通過）
 
 ---
 
-## Qwen Worker
+## Gemini Worker
 
-- [x] 安裝 Ollama + 拉 `qwen2.5:14b-instruct-q3_K_M`（確認 VRAM 夠）
+- [x] 設定 `GEMINI_API_KEY`（`.env.local`）
 - [x] 建 `lib/worker.ts`：jobs queue consumer（setInterval 輪詢，序列化）
-- [x] Qwen prompt 組裝（transcript + 指令）
-- [x] POST `http://localhost:11434/api/generate`，stream=false
+- [x] Analysis prompt 組裝（transcript + 指令）
+- [x] POST Gemini `generateContent`（`gemini-3.1-flash-lite`，`responseMimeType: application/json`）
 - [x] 解析 JSON 輸出
 - [x] Schema 驗證（word 必須在 transcript，quality 0-5）
 - [x] transaction 寫入：`sm2()` → `word_progress`，`mistakes`，`session_words`
@@ -32,7 +32,7 @@
 
 ## 驗證（合成測試 2026-06-28）
 
-- [x] Ollama JSON 解析：worker prompt → json 輸出 → validateQwenOutput 過濾
+- [x] Gemini JSON 解析：worker prompt → json 輸出 → validateAnalysisOutput 過濾
 - [x] SM-2 transaction：word_progress 更新、session_words 寫入、jobs.status = 'done'
 - [x] LanceDB：insertMemory（bge-small embedding）+ searchMemories（toArray）
-- [ ] 真實 session 端對端（需先 `ollama pull qwen2.5:14b-instruct-q3_K_M`）
+- [x] 真實 session 端對端（使用者實際開口說話，transcript 含 user 台詞，Gemini worker 分析並寫入 word_progress/mistakes 成功）
