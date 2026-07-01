@@ -23,7 +23,7 @@
 | 1 | 全雙工對話引擎 | ✅ 完成 | [spec](./docs/specs/001-realtime-core/spec.md) | [tasks](./docs/specs/001-realtime-core/tasks.md) |
 | 2 | 單字庫 + SM-2 + Tool Calling | ✅ 完成 | [spec](./docs/specs/002-vocab-srs/spec.md) | [tasks](./docs/specs/002-vocab-srs/tasks.md) |
 | 3 | Gemini async + LanceDB + RAG | ✅ 完成 | [spec](./docs/specs/003-async-pipeline/spec.md) | [tasks](./docs/specs/003-async-pipeline/tasks.md) |
-| 4 | Dashboard + 學習統計 | ⬜ 待規劃 | [spec](./docs/specs/004-dashboard/spec.md) | [tasks](./docs/specs/004-dashboard/tasks.md) |
+| 4 | Dashboard + 學習統計 | ✅ 完成 | [spec](./docs/specs/004-dashboard/spec.md) | [tasks](./docs/specs/004-dashboard/tasks.md) |
 
 ---
 

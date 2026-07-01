@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { DEFAULT_PERSONAS, Persona } from '@/lib/types'
 import ConversationView from '@/components/ConversationView'
 import PersonaSelector from '@/components/PersonaSelector'
@@ -14,6 +15,9 @@ export default function Home() {
       <div className="flex flex-col items-center gap-1">
         <h1 className="text-2xl font-bold tracking-tight">Lingua A8</h1>
         <p className="text-zinc-500 text-sm">全雙工 AI 語言對話練習</p>
+        <Link href="/dashboard" className="text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-300 mt-1">
+          學習儀表板 →
+        </Link>
       </div>
 
       {/* Persona Selector */}

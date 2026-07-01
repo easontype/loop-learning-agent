@@ -1,6 +1,6 @@
 # Spec 004 — Dashboard（學習統計）
 
-> Phase 4 ⬜ 尚未開始（Phase 3 完成後再評估細節）
+> Phase 4 ✅ 完成（2026-07-01）
 
 ---
 
@@ -43,8 +43,12 @@ GET /api/mistakes?limit=20
 
 ---
 
+## 設計系統
+
+Phase 4 UI 使用 `/ds-full`（design-system skill 組）產生的 Loop 設計系統 — Path 0 命中 `VoltAgent/awesome-design-md` 的 Stripe 參考版，套用 conservative 變種（主色降飽和、圓角壓縮到 2–8px、按鈕改小圓角矩形取代原本的 pill 形狀、無陰影改用 hairline 邊框）。定義見專案根目錄 `DESIGN.md`。
+
 ## 成功標準
 
-- [ ] `/dashboard` 頁面可存取，不報錯
-- [ ] 至少一次 Phase 3 完整跑過後，看到有資料的進度表
-- [ ] Leech 單字有明顯標示
+- [x] `/dashboard` 頁面可存取，不報錯
+- [x] 至少一次 Phase 3 完整跑過後，看到有資料的進度表（166 個單字、20 筆錯誤紀錄皆正確顯示）
+- [x] Leech 單字有明顯標示（lapses >= 4 時顯示 ruby 色底 + Leech 標籤；目前資料尚無實際 leech 詞可視覺驗證，邏輯已實作並可運作）

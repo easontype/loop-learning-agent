@@ -3,6 +3,24 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Loop design system (DESIGN.md, conservative variant) — used by /dashboard */
+  --loop-primary: #624dea;
+  --loop-primary-deep: #493eb1;
+  --loop-primary-press: #373582;
+  --loop-primary-soft: #746eed;
+  --loop-primary-subdued: #bfbff3;
+  --loop-dark-900: #1c1e54;
+  --loop-ink: #0d253d;
+  --loop-ink-secondary: #273951;
+  --loop-ink-mute: #64748d;
+  --loop-on-primary: #ffffff;
+  --loop-canvas: #ffffff;
+  --loop-canvas-soft: #fafbfd;
+  --loop-canvas-cream: #faf6ee;
+  --loop-hairline: #e3e8ee;
+  --loop-hairline-input: #a8c3de;
+  --loop-ruby: #ea2261;
 }
 
 @theme inline {
