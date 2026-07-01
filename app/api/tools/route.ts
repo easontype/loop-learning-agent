@@ -1,22 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { words, word_progress } from '@/lib/schema'
-import { lte, asc, eq, sql } from 'drizzle-orm'
+import { lte, asc, eq, sql, and } from 'drizzle-orm'
 
 export async function POST(req: NextRequest) {
   const { tool, args } = await req.json()
 
   if (tool === 'get_next_word') {
+    const { language } = args ?? {}
+    if (!language) return NextResponse.json({ error: 'missing language' }, { status: 400 })
+
     const rows = db
       .select({
         word: words.word,
         reading: words.reading,
         definition: words.definition,
         example: words.example,
+        level: words.level,
       })
       .from(word_progress)
       .innerJoin(words, eq(words.id, word_progress.word_id))
-      .where(lte(word_progress.next_review, sql`unixepoch()`))
+      .where(and(lte(word_progress.next_review, sql`unixepoch()`), eq(words.language, language)))
       .orderBy(asc(word_progress.next_review), asc(word_progress.ease_factor))
       .limit(1)
       .all()

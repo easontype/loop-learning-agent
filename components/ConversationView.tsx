@@ -11,7 +11,12 @@ const TOOLS = [
     type: 'function',
     name: 'get_next_word',
     description: 'Get the next vocabulary word due for spaced repetition review. Call this when you want to introduce a new practice word.',
-    parameters: { type: 'object', properties: {} },
+    parameters: {
+      type: 'object',
+      properties: {
+        language: { type: 'string', enum: ['en', 'ja'], description: 'Language of the word' },
+      },
+    },
   },
   {
     type: 'function',
@@ -208,6 +213,10 @@ export default function ConversationView({ persona }: Props) {
     let args: Record<string, unknown> = {}
     try { args = JSON.parse(item.arguments || '{}') } catch {}
 
+    // Force the current persona's language regardless of what the model passed —
+    // the session must never surface words from the other language.
+    if (item.name === 'get_next_word') args.language = persona.language
+
     let result: unknown = null
     try {
       const res = await fetch('/api/tools', {
@@ -233,7 +242,7 @@ export default function ConversationView({ persona }: Props) {
 
     // Prompt model to continue
     ws.send(JSON.stringify({ type: 'response.create' }))
-  }, [])
+  }, [persona])
 
   const handleMessage = useCallback(
     (raw: string) => {
