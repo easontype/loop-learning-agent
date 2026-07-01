@@ -7,11 +7,35 @@ import { eq, and, asc, sql } from 'drizzle-orm'
 const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
+// A single Gemini call should never take this long; anything still "processing"
+// past this age was orphaned by a crash/restart mid-job and must be recovered.
+const STALE_PROCESSING_S = 300
+
 export function startWorker() {
   setInterval(processPendingJobs, 30_000)
 }
 
+function recoverStaleJobs() {
+  const cutoff = Math.floor(Date.now() / 1000) - STALE_PROCESSING_S
+  const stale = db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.status, 'processing'), sql`${jobs.updated_at} < ${cutoff}`))
+    .all()
+
+  for (const job of stale) {
+    const nextStatus = (job.attempts ?? 0) >= 3 ? 'dead' : 'pending'
+    db.update(jobs)
+      .set({ status: nextStatus, last_error: 'recovered from stale processing state', updated_at: sql`unixepoch()` })
+      .where(eq(jobs.id, job.id))
+      .run()
+    console.warn(`[worker] job ${job.id} was stuck in processing, recovered to ${nextStatus}`)
+  }
+}
+
 async function processPendingJobs() {
+  recoverStaleJobs()
+
   const pending = db
     .select()
     .from(jobs)
@@ -71,10 +95,13 @@ async function processJob(jobId: number, sessionId: number) {
         const wordRow = tx
           .select({ id: words.id })
           .from(words)
-          .where(eq(words.word, word))
+          .where(sql`lower(${words.word}) = lower(${word})`)
           .limit(1)
           .all()[0]
-        if (!wordRow) continue
+        if (!wordRow) {
+          console.warn(`[worker] job for session ${sessionId}: word "${word}" not found in DB, skipped`)
+          continue
+        }
 
         const existing = tx
           .select()
@@ -163,13 +190,21 @@ function validateAnalysisOutput(parsed: unknown, transcriptText: string): Record
   if (!parsed || typeof parsed !== 'object') throw new Error('invalid JSON from Gemini')
   const out = parsed as Record<string, unknown>
 
+  const lowerTranscript = transcriptText.toLowerCase()
   const wq = ((out.word_quality ?? {}) as Record<string, unknown>)
   for (const key of Object.keys(wq)) {
-    if (!transcriptText.includes(key)) {
+    if (!lowerTranscript.includes(key.toLowerCase())) {
+      console.warn(`[worker] word_quality key "${key}" not found in transcript, dropped`)
       delete wq[key]
       continue
     }
-    wq[key] = Math.max(0, Math.min(5, Number(wq[key])))
+    const num = Number(wq[key])
+    if (!Number.isFinite(num)) {
+      console.warn(`[worker] word_quality["${key}"] = ${JSON.stringify(wq[key])} is not a valid number, dropped`)
+      delete wq[key]
+      continue
+    }
+    wq[key] = Math.max(0, Math.min(5, num))
   }
   out.word_quality = wq
 

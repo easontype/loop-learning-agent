@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
 
   const session = db.select().from(sessions).where(eq(sessions.id, session_id)).limit(1).all()[0]
   if (!session) return NextResponse.json({ error: 'not found' }, { status: 404 })
+  if (session.ended_at) return NextResponse.json({ ok: true, already_ended: true })
 
   const now = Math.floor(Date.now() / 1000)
   const duration_s = session.started_at ? now - session.started_at : null

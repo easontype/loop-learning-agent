@@ -36,3 +36,9 @@
 - [x] SM-2 transaction：word_progress 更新、session_words 寫入、jobs.status = 'done'
 - [x] LanceDB：insertMemory（bge-small embedding）+ searchMemories（toArray）
 - [x] 真實 session 端對端（使用者實際開口說話，transcript 含 user 台詞，Gemini worker 分析並寫入 word_progress/mistakes 成功）
+
+## 修正記錄
+
+- [x]（2026-07-01）**卡死 job 復原**：`processJob()` 一開始就把 job 標成 `processing`，若 server 在等 Gemini 回應時重啟/崩潰，該 job 會永遠卡在 `processing`（輪詢只抓 `status='pending'`）。修正：新增 `recoverStaleJobs()`，每次輪詢前檢查 `status='processing'` 且 `updated_at` 超過 300 秒（正常 Gemini 呼叫不可能這麼久）的 job，視 `attempts` 轉回 `pending` 重試或 `dead`。
+- [x]（2026-07-01）**大小寫敏感導致靜默漏字**：`validateAnalysisOutput` 用 `transcriptText.includes(key)`、word_progress 寫入時用 `eq(words.word, word)`，兩處都是精確字串比對，Gemini 回傳大小寫跟 transcript/DB 不同時（例如句首大寫）該字會被直接跳過。修正：transcript 比對改用小寫正規化（`toLowerCase()`），DB 查找改用 `lower(word) = lower(?)`，並補上 `console.warn` 讓漏字不再無聲無息。
+- [x]（2026-07-01）**quality 值無 NaN 防呆**：Gemini 若回傳非數字，`Number(x)` → `NaN`，`sm2()` 裡 `q >= 3` 對 NaN 恆為 false，會被靜默當成一次 lapse。修正：`validateAnalysisOutput` 改用 `Number.isFinite()` 檢查，無效值直接丟棄該筆 word_quality（而非帶著 NaN 進入 SM-2），並加上警告 log。
